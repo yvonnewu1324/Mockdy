@@ -47,12 +47,29 @@ const App: React.FC = () => {
       setNotionDatabaseIdInput(existingConnection.databaseId ?? '');
     }
 
-    // Handle Notion OAuth redirect: look for ?code= in the URL
+    // Handle Notion OAuth redirect: look for ?code= or ?error= in the URL
     // Notion redirects to OAUTH_REDIRECT_URI with ?code=... after user authorizes
+    // If user cancels, Notion redirects with ?error=access_denied&state=
     const url = new URL(window.location.href);
     const code = url.searchParams.get('code');
+    const error = url.searchParams.get('error');
     const state = url.searchParams.get('state'); // Optional: can use state param for CSRF protection
 
+    // Handle OAuth cancellation/error from Notion
+    if (error) {
+      const errorMessage = error === 'access_denied' 
+        ? 'Notion authorization was cancelled. Please try again if you want to connect your workspace.'
+        : `Notion authorization failed: ${error}`;
+      console.warn('Notion OAuth error:', error);
+      alert(errorMessage);
+      // Clear error params so refreshes look clean
+      url.searchParams.delete('error');
+      url.searchParams.delete('state');
+      window.history.replaceState({}, document.title, url.toString());
+      return;
+    }
+
+    // Handle successful OAuth callback
     if (code) {
       setIsCompletingNotionAuth(true);
       completeNotionAuth(code)
@@ -196,15 +213,20 @@ const App: React.FC = () => {
         saveSession(newSession);
         refreshHistory();
 
-        // Save to Notion (if configured for this browser)
+        // Save to Notion (if fully configured: connected + database ID)
         if (isNotionConfigured()) {
             saveToNotion(newSession, notionConnection).then(result => {
                 if (result.success) {
                     console.log('✅ Session synced to Notion');
                 } else {
                     console.warn('⚠️ Failed to sync to Notion:', result.error);
+                    alert(`⚠️ Failed to save to Notion: ${result.error || 'Unknown error'}`);
                 }
             });
+        } else if (notionConnection?.accessToken && !notionConnection?.databaseId) {
+            // User connected Notion but didn't provide database ID
+            console.info('ℹ️ Notion connected but database ID not configured. Report saved locally only.');
+            // Optionally show a subtle notification (not an alert, as it's not an error)
         }
 
         setFeedback(feedbackData);
@@ -328,7 +350,11 @@ const App: React.FC = () => {
             </div>
 
             {/* Notion connection panel */}
-            <div className="max-w-2xl mx-auto mb-10 bg-slate-900/60 border border-slate-800 rounded-2xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className={`max-w-2xl mx-auto mb-10 bg-slate-900/60 border rounded-2xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4 ${
+              notionConnection && !notionConnection.databaseId 
+                ? 'border-yellow-500/50 bg-yellow-500/5' 
+                : 'border-slate-800'
+            }`}>
               <div className="text-left space-y-1">
                 <p className="text-sm font-semibold text-slate-200">
                   Notion workspace connection
@@ -337,9 +363,16 @@ const App: React.FC = () => {
                   Connect your own Notion workspace and paste the database ID where you want interview reports stored.
                 </p>
                 {notionConnection && (
-                  <p className="text-xs text-slate-400">
-                    Connected workspace{notionConnection.workspaceName ? `: ${notionConnection.workspaceName}` : ''}.
-                  </p>
+                  <>
+                    <p className="text-xs text-slate-400">
+                      ✅ Connected workspace{notionConnection.workspaceName ? `: ${notionConnection.workspaceName}` : ''}.
+                    </p>
+                    {!notionConnection.databaseId && (
+                      <p className="text-xs text-yellow-400 font-medium">
+                        ⚠️ Database ID required: Paste your Notion database ID below to enable saving reports.
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
               <div className="flex flex-col gap-2 md:items-end w-full md:w-auto">

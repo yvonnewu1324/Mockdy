@@ -41,7 +41,7 @@ export default async function handler(
     baseUrl.searchParams.set('response_type', 'code');
     baseUrl.searchParams.set('redirect_uri', OAUTH_REDIRECT_URI);
     // Workspace-level token (recommended for most integrations)
-    baseUrl.searchParams.set('owner', 'workspace');
+    baseUrl.searchParams.set('owner', 'user');
 
     return res.status(200).json({ url: baseUrl.toString() });
   } catch (err) {

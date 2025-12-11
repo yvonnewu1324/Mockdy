@@ -40,11 +40,14 @@ export const saveToNotion = async (
 ): Promise<NotionResponse> => {
   const notionConnection = connection ?? getNotionConnection();
 
-  if (!notionConnection?.accessToken || !notionConnection?.databaseId) {
-    console.warn(
-      'Notion connection not configured for this browser. User must connect Notion and provide a database ID.'
-    );
-    return { success: false, error: 'Notion not connected for this browser' };
+  if (!notionConnection?.accessToken) {
+    console.warn('Notion workspace not connected. User must complete OAuth flow.');
+    return { success: false, error: 'Notion workspace not connected. Please connect your workspace first.' };
+  }
+
+  if (!notionConnection?.databaseId) {
+    console.warn('Notion database ID not configured. User must provide a database ID.');
+    return { success: false, error: 'Notion database ID not configured. Please paste your database ID in settings.' };
   }
 
   try {
