@@ -1,6 +1,7 @@
 /// <reference types="../vite-env" />
 import { NotionConnection, StoredSession } from '../types';
-import { getNotionConnection } from './storage';
+import { getNotionConnection, clearNotionConnection } from './storage';
+import { refreshNotionToken } from './notionAuth';
 
 // API base URL - routes to Vercel serverless function
 // In production: automatically handled by Vercel
@@ -110,47 +111,41 @@ export const saveToNotion = async (
     
     const pageTitle = generateTitle();
     
-    const response = await fetch(`${NOTION_API_BASE}/pages`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${notionConnection.accessToken}`,
-        'Content-Type': 'application/json',
-        'Notion-Version': '2022-06-28',
+    // Prepare request body (reused for retry after refresh)
+    const requestBody = {
+      parent: {
+        database_id: notionConnection.databaseId,
       },
-      body: JSON.stringify({
-        parent: {
-          database_id: notionConnection.databaseId,
-        },
-        properties: {
-          // Title property (required for every Notion database)
-          'Title': {
-            title: [
-              {
-                text: {
-                  content: pageTitle,
-                },
+      properties: {
+        // Title property (required for every Notion database)
+        'Title': {
+          title: [
+            {
+              text: {
+                content: pageTitle,
               },
-            ],
-          },
-          // Select property for interview type
-          'Type': {
-            select: {
-              name: session.type,
             },
-          },
-          // Number property for score
-          'Score': {
-            number: session.feedback.score,
-          },
-          // Date property
-          'Date': {
-            date: {
-              start: new Date(session.timestamp).toISOString(),
-            },
+          ],
+        },
+        // Select property for interview type
+        'Type': {
+          select: {
+            name: session.type,
           },
         },
-        // Add page content sections
-        children: [
+        // Number property for score
+        'Score': {
+          number: session.feedback.score,
+        },
+        // Date property
+        'Date': {
+          date: {
+            start: new Date(session.timestamp).toISOString(),
+          },
+        },
+      },
+      // Add page content sections
+      children: [
           //
           // === SUMMARY ===
           //
@@ -403,9 +398,54 @@ export const saveToNotion = async (
                   },
                 },
               ]),
-        ],
-      }),
-    });
+      ],
+    };
+
+    // Helper function to make API request with a given access token
+    const makeRequest = async (accessToken: string): Promise<Response> => {
+      return fetch(`${NOTION_API_BASE}/pages`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'Notion-Version': '2022-06-28',
+        },
+        body: JSON.stringify(requestBody),
+      });
+    };
+
+    // Try initial request
+    let response = await makeRequest(notionConnection.accessToken);
+
+    // If 401 Unauthorized, try to refresh token and retry
+    if (response.status === 401) {
+      console.log('Access token expired, attempting to refresh...');
+      
+      if (!notionConnection.refreshToken) {
+        // No refresh token available, user needs to reconnect
+        clearNotionConnection();
+        return { 
+          success: false, 
+          error: 'Session expired. Please reconnect your Notion workspace.' 
+        };
+      }
+
+      try {
+        // Attempt to refresh the token
+        const refreshedConnection = await refreshNotionToken(notionConnection.refreshToken);
+        
+        // Retry the request with new access token
+        response = await makeRequest(refreshedConnection.accessToken);
+      } catch (refreshError) {
+        // Refresh token expired or invalid - log out user
+        console.error('Token refresh failed, logging out user:', refreshError);
+        clearNotionConnection();
+        return { 
+          success: false, 
+          error: 'Session expired. Please reconnect your Notion workspace.' 
+        };
+      }
+    }
 
     if (!response.ok) {
       const errorData = await response.json();

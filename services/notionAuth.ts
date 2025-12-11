@@ -1,5 +1,5 @@
 import { NotionConnection } from '../types';
-import { saveNotionConnection } from './storage';
+import { saveNotionConnection, getNotionConnection } from './storage';
 
 interface NotionTokenResponse {
   access_token: string;
@@ -121,19 +121,23 @@ export const refreshNotionToken = async (refreshToken: string): Promise<NotionCo
       throw new Error(errorMessage);
     }
 
-    // Build updated connection object
+    // Get existing connection to preserve workspace info
+    const existingConnection = getNotionConnection();
+    
+    // Build updated connection object, preserving workspace info
     const connection: NotionConnection = {
       accessToken: data.access_token,
       refreshToken: data.refresh_token,
       // Preserve existing workspace info (refresh doesn't return it)
-      workspaceId: undefined,
-      workspaceName: undefined,
-      workspaceIcon: null,
+      workspaceId: existingConnection?.workspaceId,
+      workspaceName: existingConnection?.workspaceName,
+      workspaceIcon: existingConnection?.workspaceIcon ?? null,
       botId: data.bot_id,
+      databaseId: existingConnection?.databaseId, // Preserve database ID
     };
 
-    // Note: You may want to merge with existing connection to preserve workspace info
-    // For now, we'll save the new tokens and let the user reconnect if needed
+    // Save updated connection
+    saveNotionConnection(connection);
     
     return connection;
   } catch (error) {

@@ -11,6 +11,7 @@ import InterviewSession from './components/InterviewSession';
 import FeedbackDisplay from './components/FeedbackDisplay';
 import HistoryView from './components/HistoryView';
 import ReviewSession from './components/ReviewSession';
+import Modal, { ModalType } from './components/Modal';
 
 type ViewMode = 'HOME' | 'HISTORY' | 'REVIEW';
 
@@ -35,6 +36,26 @@ const App: React.FC = () => {
 
   const chatSessionRef = useRef<Chat | null>(null);
   const [isSending, setIsSending] = useState(false);
+  
+  // Modal state
+  const [modal, setModal] = useState<{
+    isOpen: boolean;
+    type: ModalType;
+    title?: string;
+    message: string;
+  }>({
+    isOpen: false,
+    type: 'info',
+    message: '',
+  });
+
+  const showModal = (message: string, type: ModalType = 'info', title?: string) => {
+    setModal({ isOpen: true, type, message, title });
+  };
+
+  const closeModal = () => {
+    setModal({ ...modal, isOpen: false });
+  };
 
   // Load history on mount
   useEffect(() => {
@@ -61,7 +82,7 @@ const App: React.FC = () => {
         ? 'Notion authorization was cancelled. Please try again if you want to connect your workspace.'
         : `Notion authorization failed: ${error}`;
       console.warn('Notion OAuth error:', error);
-      alert(errorMessage);
+      showModal(errorMessage, 'warning', 'Notion Authorization');
       // Clear error params so refreshes look clean
       url.searchParams.delete('error');
       url.searchParams.delete('state');
@@ -83,14 +104,26 @@ const App: React.FC = () => {
           
           // Show success message
           if (conn.databaseId) {
-            alert(`✅ Connected to Notion workspace${conn.workspaceName ? `: ${conn.workspaceName}` : ''}\n\n✨ Template database automatically configured! Your interview reports will be saved automatically.`);
+            showModal(
+              `Connected to Notion workspace${conn.workspaceName ? `: ${conn.workspaceName}` : ''}\n\n✨ Template database automatically configured! Your interview reports will be saved automatically.`,
+              'success',
+              'Notion Connected'
+            );
           } else {
-            alert(`✅ Connected to Notion workspace${conn.workspaceName ? `: ${conn.workspaceName}` : ''}\n\n⚠️ Please paste your Notion database ID below to enable saving reports.`);
+            showModal(
+              `Connected to Notion workspace${conn.workspaceName ? `: ${conn.workspaceName}` : ''}\n\n⚠️ Please paste your Notion database ID below to enable saving reports.`,
+              'success',
+              'Notion Connected'
+            );
           }
         })
         .catch((err) => {
           console.error('Failed to complete Notion OAuth', err);
-          alert(`Failed to connect to Notion: ${err instanceof Error ? err.message : 'Unknown error'}`);
+          showModal(
+            `Failed to connect to Notion: ${err instanceof Error ? err.message : 'Unknown error'}`,
+            'error',
+            'Connection Failed'
+          );
         })
         .finally(() => {
           setIsCompletingNotionAuth(false);
@@ -105,18 +138,22 @@ const App: React.FC = () => {
       // After authorization, Notion redirects back with ?code=...
     } catch (e) {
       console.error('Failed to start Notion authorization', e);
-      alert(`Failed to start Notion authorization: ${e instanceof Error ? e.message : 'Unknown error'}`);
+      showModal(
+        `Failed to start Notion authorization: ${e instanceof Error ? e.message : 'Unknown error'}`,
+        'error',
+        'Authorization Failed'
+      );
     }
   };
 
   const handleSaveNotionDatabaseId = () => {
     const trimmed = notionDatabaseIdInput.trim();
     if (!trimmed) {
-      alert('Please paste a Notion database ID.');
+      showModal('Please paste a Notion database ID.', 'warning', 'Database ID Required');
       return;
     }
     if (!notionConnection) {
-      alert('Please connect your Notion workspace first.');
+      showModal('Please connect your Notion workspace first.', 'warning', 'Notion Not Connected');
       return;
     }
     const updated: NotionConnection = {
@@ -125,7 +162,7 @@ const App: React.FC = () => {
     };
     setNotionConnection(updated);
     saveNotionConnection(updated);
-    alert('Saved Notion database ID. Future reports will be sent there.');
+    showModal('Saved Notion database ID. Future reports will be sent there.', 'success', 'Database ID Saved');
   };
 
   const handleDisconnectNotion = () => {
@@ -190,7 +227,7 @@ const App: React.FC = () => {
     } catch (e) {
         console.error("Failed to start", e);
         setInterviewState(prev => ({ ...prev, isLoading: false }));
-        alert("Failed to connect to AI. Please check your API key.");
+        showModal("Failed to connect to AI. Please check your API key.", 'error', 'Connection Failed');
     }
   };
 
@@ -226,7 +263,20 @@ const App: React.FC = () => {
                     console.log('✅ Session synced to Notion');
                 } else {
                     console.warn('⚠️ Failed to sync to Notion:', result.error);
-                    alert(`⚠️ Failed to save to Notion: ${result.error || 'Unknown error'}`);
+                    
+                    // Check if error indicates session expired (refresh token expired)
+                    if (result.error?.includes('Session expired') || result.error?.includes('reconnect')) {
+                        // User was logged out due to expired refresh token
+                        setNotionConnection(null);
+                        setNotionDatabaseIdInput('');
+                        showModal(
+                            'Your Notion session has expired. Please reconnect your workspace to continue saving reports.',
+                            'warning',
+                            'Session Expired'
+                        );
+                    } else {
+                        showModal(`Failed to save to Notion: ${result.error || 'Unknown error'}`, 'error', 'Notion Save Failed');
+                    }
                 }
             });
         } else if (notionConnection?.accessToken && !notionConnection?.databaseId) {
@@ -239,7 +289,7 @@ const App: React.FC = () => {
         setInterviewState(prev => ({ ...prev, isActive: false }));
     } catch (e) {
         console.error(e);
-        alert("Error generating feedback.");
+        showModal("Error generating feedback. Please try again.", 'error', 'Feedback Error');
     } finally {
         setInterviewState(prev => ({ ...prev, isLoading: false }));
     }
@@ -451,6 +501,15 @@ const App: React.FC = () => {
                 <p>Powered by Google Gemini 2.5 Flash</p>
             </footer>
         </div>
+
+        {/* Custom Modal */}
+        <Modal
+          isOpen={modal.isOpen}
+          onClose={closeModal}
+          type={modal.type}
+          title={modal.title}
+          message={modal.message}
+        />
     </div>
   );
 };
