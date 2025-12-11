@@ -48,25 +48,26 @@ const App: React.FC = () => {
     }
 
     // Handle Notion OAuth redirect: look for ?code= in the URL
-    // Per Notion public OAuth docs:
-    // https://developers.notion.com/docs/authorization#public-integration-authorization-overview
+    // Notion redirects to OAUTH_REDIRECT_URI with ?code=... after user authorizes
     const url = new URL(window.location.href);
     const code = url.searchParams.get('code');
-    
+    const state = url.searchParams.get('state'); // Optional: can use state param for CSRF protection
+
     if (code) {
       setIsCompletingNotionAuth(true);
       completeNotionAuth(code)
         .then((conn) => {
           setNotionConnection(conn);
+          setNotionDatabaseIdInput(conn.databaseId ?? '');
           // Clear query params so refreshes look clean
           url.searchParams.delete('code');
-          url.searchParams.delete('notion_oauth');
+          url.searchParams.delete('state');
           window.history.replaceState({}, document.title, url.toString());
-          alert(`Connected to Notion workspace${conn.workspaceName ? `: ${conn.workspaceName}` : ''}`);
+          alert(`✅ Connected to Notion workspace${conn.workspaceName ? `: ${conn.workspaceName}` : ''}`);
         })
         .catch((err) => {
           console.error('Failed to complete Notion OAuth', err);
-          alert('Failed to connect to Notion. Please try again.');
+          alert(`Failed to connect to Notion: ${err instanceof Error ? err.message : 'Unknown error'}`);
         })
         .finally(() => {
           setIsCompletingNotionAuth(false);
@@ -77,9 +78,11 @@ const App: React.FC = () => {
   const handleConnectNotionClick = async () => {
     try {
       await redirectToNotionAuth();
+      // User will be redirected to Notion OAuth page
+      // After authorization, Notion redirects back with ?code=...
     } catch (e) {
-      console.error(e);
-      alert('Failed to start Notion authorization. Check the OAuth server is running.');
+      console.error('Failed to start Notion authorization', e);
+      alert(`Failed to start Notion authorization: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
   };
 
@@ -89,14 +92,12 @@ const App: React.FC = () => {
       alert('Please paste a Notion database ID.');
       return;
     }
-    const current: Partial<NotionConnection> = notionConnection ?? {};
+    if (!notionConnection) {
+      alert('Please connect your Notion workspace first.');
+      return;
+    }
     const updated: NotionConnection = {
-      accessToken: current.accessToken || '',
-      refreshToken: current.refreshToken,
-      workspaceId: current.workspaceId,
-      workspaceName: current.workspaceName,
-      workspaceIcon: current.workspaceIcon ?? null,
-      botId: current.botId,
+      ...notionConnection,
       databaseId: trimmed,
     };
     setNotionConnection(updated);

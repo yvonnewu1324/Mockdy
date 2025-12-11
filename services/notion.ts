@@ -2,8 +2,9 @@
 import { NotionConnection, StoredSession } from '../types';
 import { getNotionConnection } from './storage';
 
-// Use Vite's dev server proxy to bypass CORS (configured in vite.config.ts)
-// For production, you'll need a serverless function (Vercel/Netlify) as a proxy
+// API base URL - routes to Vercel serverless function
+// In production: automatically handled by Vercel
+// In dev: use `vercel dev` to run serverless functions locally
 const NOTION_API_BASE = '/api/notion';
 
 interface NotionResponse {

@@ -1,15 +1,14 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 /**
- * Vercel serverless function to exchange Notion OAuth authorization code for tokens.
+ * Vercel serverless function to refresh Notion OAuth access tokens.
  * 
  * Security:
  * - Validates request body and environment variables
- * - Uses HTTP Basic Auth with base64-encoded credentials (per Notion spec)
+ * - Uses HTTP Basic Auth with base64-encoded credentials
  * - Never exposes CLIENT_SECRET to client
- * - Validates redirect_uri matches configuration
  * 
- * @see https://developers.notion.com/docs/authorization#step-3-send-the-code-in-a-post-request-to-the-notion-api
+ * @see https://developers.notion.com/docs/authorization#step-6-refreshing-an-access-token
  */
 export default async function handler(
   req: VercelRequest,
@@ -25,29 +24,28 @@ export default async function handler(
   const {
     OAUTH_CLIENT_ID,
     OAUTH_CLIENT_SECRET,
-    OAUTH_REDIRECT_URI,
   } = process.env;
 
-  if (!OAUTH_CLIENT_ID || !OAUTH_CLIENT_SECRET || !OAUTH_REDIRECT_URI) {
+  if (!OAUTH_CLIENT_ID || !OAUTH_CLIENT_SECRET) {
     console.error('[Notion OAuth] Missing required environment variables');
     return res.status(500).json({
-      error: 'Notion OAuth not configured. Missing OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, or OAUTH_REDIRECT_URI',
+      error: 'Notion OAuth not configured. Missing OAUTH_CLIENT_ID or OAUTH_CLIENT_SECRET',
     });
   }
 
   // Validate request body
-  const { code } = req.body || {};
-  if (!code || typeof code !== 'string') {
+  const { refresh_token } = req.body || {};
+  if (!refresh_token || typeof refresh_token !== 'string') {
     return res.status(400).json({
-      error: 'Missing or invalid `code` in request body',
+      error: 'Missing or invalid `refresh_token` in request body',
     });
   }
 
   try {
-    // Encode credentials for HTTP Basic Auth (per Notion OAuth spec)
+    // Encode credentials for HTTP Basic Auth
     const encoded = Buffer.from(`${OAUTH_CLIENT_ID}:${OAUTH_CLIENT_SECRET}`).toString('base64');
 
-    // Exchange authorization code for access token
+    // Refresh the access token
     const response = await fetch('https://api.notion.com/v1/oauth/token', {
       method: 'POST',
       headers: {
@@ -56,32 +54,30 @@ export default async function handler(
         Authorization: `Basic ${encoded}`,
       },
       body: JSON.stringify({
-        grant_type: 'authorization_code',
-        code,
-        redirect_uri: OAUTH_REDIRECT_URI,
+        grant_type: 'refresh_token',
+        refresh_token,
       }),
     });
 
     const data = await response.json();
 
     if (!response.ok) {
-      console.error('[Notion OAuth] Token exchange failed', {
+      console.error('[Notion OAuth] Token refresh failed', {
         status: response.status,
         error: data,
       });
       return res.status(response.status).json({
-        error: data.error || 'Failed to exchange authorization code',
+        error: data.error || 'Failed to refresh access token',
         ...(data.error_description && { error_description: data.error_description }),
       });
     }
 
-    // Return token response to client
-    // Response includes: access_token, refresh_token, bot_id, workspace_id, etc.
+    // Return new token response (includes new access_token and refresh_token)
     return res.status(200).json(data);
   } catch (err) {
-    console.error('[Notion OAuth] Unexpected error during token exchange', err);
+    console.error('[Notion OAuth] Unexpected error during token refresh', err);
     return res.status(500).json({
-      error: 'Unexpected error during Notion token exchange',
+      error: 'Unexpected error during Notion token refresh',
     });
   }
 }

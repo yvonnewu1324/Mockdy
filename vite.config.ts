@@ -8,18 +8,9 @@ export default defineConfig(({ mode }) => {
       server: {
         port: 3000,
         host: '0.0.0.0',
-        proxy: {
-          // Proxy Notion API requests to bypass CORS in local dev.
-          // In production on Vercel, the `/api/notion` route is backed by a serverless function.
-          '/api/notion': {
-            target: 'https://api.notion.com/v1',
-            changeOrigin: true,
-            rewrite: (path) => path.replace(/^\/api\/notion/, ''),
-            headers: {
-              'Notion-Version': '2022-06-28',
-            },
-          },
-        },
+        // Note: For local development with API routes, use `vercel dev` instead of `vite`
+        // This will run both frontend and serverless functions together
+        // Alternatively, run `vite` and `vercel dev` in parallel on different ports
       },
       plugins: [react()],
       define: {
