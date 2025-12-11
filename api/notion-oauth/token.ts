@@ -9,24 +9,30 @@ const {
 };
 
 export default async function handler(req: any, res: any) {
-  if (req.method !== 'POST') {
-    res.setHeader('Allow', 'POST');
+  // OAuth must accept GET, not POST
+  if (req.method !== 'GET') {
+    res.setHeader('Allow', 'GET');
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
   if (!OAUTH_CLIENT_ID || !OAUTH_CLIENT_SECRET || !OAUTH_REDIRECT_URI) {
     return res.status(500).json({
-      error: 'Notion OAuth not configured on server (missing OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, or OAUTH_REDIRECT_URI)',
+      error:
+        'Notion OAuth not configured on server (missing OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, or OAUTH_REDIRECT_URI)',
     });
   }
 
-  const { code } = req.body || {};
+  // OAuth sends ?code= in the query, not body
+  const { code } = req.query;
+
   if (!code || typeof code !== 'string') {
-    return res.status(400).json({ error: 'Missing `code` in request body' });
+    return res.status(400).json({ error: 'Missing `code` in query string' });
   }
 
   try {
-    const encoded = Buffer.from(`${OAUTH_CLIENT_ID}:${OAUTH_CLIENT_SECRET}`).toString('base64');
+    const encoded = Buffer.from(
+      `${OAUTH_CLIENT_ID}:${OAUTH_CLIENT_SECRET}`,
+    ).toString('base64');
 
     const response = await fetch('https://api.notion.com/v1/oauth/token', {
       method: 'POST',
@@ -49,12 +55,12 @@ export default async function handler(req: any, res: any) {
       return res.status(response.status).json(data);
     }
 
-    // Forward Notion's token response (access_token, refresh_token, workspace info, etc.)
+    // Success!
     return res.status(200).json(data);
   } catch (err) {
     console.error('[Notion OAuth] Unexpected error during token exchange', err);
-    return res.status(500).json({ error: 'Unexpected error during Notion token exchange' });
+    return res
+      .status(500)
+      .json({ error: 'Unexpected error during Notion token exchange' });
   }
 }
-
-

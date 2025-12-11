@@ -31,7 +31,8 @@ export default function handler(req: any, res: any) {
     baseUrl.searchParams.set('redirect_uri', OAUTH_REDIRECT_URI);
     // Workspace-level token by default, consistent with Notion public integration docs:
     // https://developers.notion.com/docs/authorization#what-is-a-public-integration
-    baseUrl.searchParams.set('owner', 'workspace');
+    baseUrl.searchParams.set('owner', 'user');
+
 
     res.status(200).json({ url: baseUrl.toString() });
   } catch (err) {
