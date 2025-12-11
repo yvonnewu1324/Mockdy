@@ -454,13 +454,15 @@ const App: React.FC = () => {
                   </button>
                 </div>
                 <div className="flex gap-2">
-                  <button
-                    onClick={handleConnectNotionClick}
-                    disabled={isCompletingNotionAuth}
-                    className="px-3 py-1.5 text-xs font-medium bg-slate-800 text-slate-100 rounded-lg border border-slate-700 hover:bg-slate-700 transition-colors disabled:opacity-60"
-                  >
-                    {notionConnection ? 'Reconnect Notion' : 'Connect Notion'}
-                  </button>
+                  {!notionConnection && (
+                    <button
+                      onClick={handleConnectNotionClick}
+                      disabled={isCompletingNotionAuth}
+                      className="px-3 py-1.5 text-xs font-medium bg-slate-800 text-slate-100 rounded-lg border border-slate-700 hover:bg-slate-700 transition-colors disabled:opacity-60"
+                    >
+                      Connect Notion
+                    </button>
+                  )}
                   {notionConnection && (
                     <button
                       onClick={handleDisconnectNotion}
