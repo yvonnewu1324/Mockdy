@@ -1,0 +1,7 @@
+{
+  "name": "Mockdy AI",
+  "description": "An AI-powered mock interview platform for software engineers. Practice Technical (NeetCode 150), Behavioral, and System Design interviews with real-time feedback.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
