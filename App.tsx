@@ -80,7 +80,13 @@ const App: React.FC = () => {
           url.searchParams.delete('code');
           url.searchParams.delete('state');
           window.history.replaceState({}, document.title, url.toString());
-          alert(`✅ Connected to Notion workspace${conn.workspaceName ? `: ${conn.workspaceName}` : ''}`);
+          
+          // Show success message
+          if (conn.databaseId) {
+            alert(`✅ Connected to Notion workspace${conn.workspaceName ? `: ${conn.workspaceName}` : ''}\n\n✨ Template database automatically configured! Your interview reports will be saved automatically.`);
+          } else {
+            alert(`✅ Connected to Notion workspace${conn.workspaceName ? `: ${conn.workspaceName}` : ''}\n\n⚠️ Please paste your Notion database ID below to enable saving reports.`);
+          }
         })
         .catch((err) => {
           console.error('Failed to complete Notion OAuth', err);
@@ -353,6 +359,8 @@ const App: React.FC = () => {
             <div className={`max-w-2xl mx-auto mb-10 bg-slate-900/60 border rounded-2xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4 ${
               notionConnection && !notionConnection.databaseId 
                 ? 'border-yellow-500/50 bg-yellow-500/5' 
+                : notionConnection && notionConnection.databaseId
+                ? 'border-green-500/50 bg-green-500/5'
                 : 'border-slate-800'
             }`}>
               <div className="text-left space-y-1">
@@ -360,14 +368,18 @@ const App: React.FC = () => {
                   Notion workspace connection
                 </p>
                 <p className="text-xs text-slate-400">
-                  Connect your own Notion workspace and paste the database ID where you want interview reports stored.
+                  Connect your Notion workspace. If you use the template option, the database will be configured automatically.
                 </p>
                 {notionConnection && (
                   <>
                     <p className="text-xs text-slate-400">
                       ✅ Connected workspace{notionConnection.workspaceName ? `: ${notionConnection.workspaceName}` : ''}.
                     </p>
-                    {!notionConnection.databaseId && (
+                    {notionConnection.databaseId ? (
+                      <p className="text-xs text-green-400 font-medium">
+                        ✨ Database configured: Reports will be saved automatically to your template database.
+                      </p>
+                    ) : (
                       <p className="text-xs text-yellow-400 font-medium">
                         ⚠️ Database ID required: Paste your Notion database ID below to enable saving reports.
                       </p>

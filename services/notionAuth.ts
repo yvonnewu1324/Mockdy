@@ -8,6 +8,7 @@ interface NotionTokenResponse {
   workspace_id?: string;
   workspace_name?: string;
   workspace_icon?: string | null;
+  duplicated_template_id?: string; // ID of the database created from template (if template was used)
   owner?: {
     type: 'workspace' | 'user';
     workspace?: boolean;
@@ -70,6 +71,7 @@ export const completeNotionAuth = async (code: string): Promise<NotionConnection
     }
 
     // Build connection object from token response
+    // If a template was used, duplicated_template_id contains the database ID
     const connection: NotionConnection = {
       accessToken: data.access_token,
       refreshToken: data.refresh_token,
@@ -77,6 +79,8 @@ export const completeNotionAuth = async (code: string): Promise<NotionConnection
       workspaceName: data.workspace_name,
       workspaceIcon: data.workspace_icon ?? null,
       botId: data.bot_id,
+      // Automatically use the template database ID if available
+      databaseId: data.duplicated_template_id,
     };
 
     // Store connection in localStorage (per-user, per-browser)
