@@ -12,6 +12,7 @@ import FeedbackDisplay from './components/FeedbackDisplay';
 import HistoryView from './components/HistoryView';
 import ReviewSession from './components/ReviewSession';
 import Modal, { ModalType } from './components/Modal';
+import Toast, { ToastType } from './components/Toast';
 
 type ViewMode = 'HOME' | 'HISTORY' | 'REVIEW';
 
@@ -49,12 +50,31 @@ const App: React.FC = () => {
     message: '',
   });
 
+  // Toast state (for non-intrusive notifications like Notion save success)
+  const [toast, setToast] = useState<{
+    open: boolean;
+    type: ToastType;
+    message: string;
+  }>({
+    open: false,
+    type: 'success',
+    message: '',
+  });
+
   const showModal = (message: string, type: ModalType = 'info', title?: string) => {
     setModal({ isOpen: true, type, message, title });
   };
 
   const closeModal = () => {
     setModal({ ...modal, isOpen: false });
+  };
+
+  const showToast = (message: string, type: ToastType = 'success') => {
+    setToast({ open: true, type, message });
+  };
+
+  const closeToast = () => {
+    setToast({ ...toast, open: false });
   };
 
   // Load history on mount
@@ -81,7 +101,6 @@ const App: React.FC = () => {
       const errorMessage = error === 'access_denied' 
         ? 'Notion authorization was cancelled. Please try again if you want to connect your workspace.'
         : `Notion authorization failed: ${error}`;
-      console.warn('Notion OAuth error:', error);
       showModal(errorMessage, 'warning', 'Notion Authorization');
       // Clear error params so refreshes look clean
       url.searchParams.delete('error');
@@ -118,7 +137,6 @@ const App: React.FC = () => {
           }
         })
         .catch((err) => {
-          console.error('Failed to complete Notion OAuth', err);
           showModal(
             `Failed to connect to Notion: ${err instanceof Error ? err.message : 'Unknown error'}`,
             'error',
@@ -137,7 +155,6 @@ const App: React.FC = () => {
       // User will be redirected to Notion OAuth page
       // After authorization, Notion redirects back with ?code=...
     } catch (e) {
-      console.error('Failed to start Notion authorization', e);
       showModal(
         `Failed to start Notion authorization: ${e instanceof Error ? e.message : 'Unknown error'}`,
         'error',
@@ -260,10 +277,9 @@ const App: React.FC = () => {
         if (isNotionConfigured()) {
             saveToNotion(newSession, notionConnection).then(result => {
                 if (result.success) {
-                    console.log('✅ Session synced to Notion');
+                    // Show toast notification (non-intrusive, auto-dismisses)
+                    showToast('Interview report saved successfully to Notion!', 'success');
                 } else {
-                    console.warn('⚠️ Failed to sync to Notion:', result.error);
-                    
                     // Check if error indicates session expired (refresh token expired)
                     if (result.error?.includes('Session expired') || result.error?.includes('reconnect')) {
                         // User was logged out due to expired refresh token
@@ -279,10 +295,6 @@ const App: React.FC = () => {
                     }
                 }
             });
-        } else if (notionConnection?.accessToken && !notionConnection?.databaseId) {
-            // User connected Notion but didn't provide database ID
-            console.info('ℹ️ Notion connected but database ID not configured. Report saved locally only.');
-            // Optionally show a subtle notification (not an alert, as it's not an error)
         }
 
         setFeedback(feedbackData);
@@ -511,6 +523,15 @@ const App: React.FC = () => {
           type={modal.type}
           title={modal.title}
           message={modal.message}
+        />
+
+        {/* Toast Notification (for non-intrusive alerts like Notion save success) */}
+        <Toast
+          open={toast.open}
+          onClose={closeToast}
+          type={toast.type}
+          message={toast.message}
+          autoHideDuration={4000}
         />
     </div>
   );

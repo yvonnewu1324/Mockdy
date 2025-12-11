@@ -42,12 +42,10 @@ export const saveToNotion = async (
   const notionConnection = connection ?? getNotionConnection();
 
   if (!notionConnection?.accessToken) {
-    console.warn('Notion workspace not connected. User must complete OAuth flow.');
     return { success: false, error: 'Notion workspace not connected. Please connect your workspace first.' };
   }
 
   if (!notionConnection?.databaseId) {
-    console.warn('Notion database ID not configured. User must provide a database ID.');
     return { success: false, error: 'Notion database ID not configured. Please paste your database ID in settings.' };
   }
 
@@ -419,8 +417,6 @@ export const saveToNotion = async (
 
     // If 401 Unauthorized, try to refresh token and retry
     if (response.status === 401) {
-      console.log('Access token expired, attempting to refresh...');
-      
       if (!notionConnection.refreshToken) {
         // No refresh token available, user needs to reconnect
         clearNotionConnection();
@@ -438,7 +434,6 @@ export const saveToNotion = async (
         response = await makeRequest(refreshedConnection.accessToken);
       } catch (refreshError) {
         // Refresh token expired or invalid - log out user
-        console.error('Token refresh failed, logging out user:', refreshError);
         clearNotionConnection();
         return { 
           success: false, 
@@ -449,16 +444,13 @@ export const saveToNotion = async (
 
     if (!response.ok) {
       const errorData = await response.json();
-      console.error('Notion API error:', errorData);
       return { success: false, error: errorData.message || 'Failed to save to Notion' };
     }
 
     const data = await response.json();
-    console.log('✅ Session saved to Notion:', data.id);
     return { success: true, pageId: data.id };
 
   } catch (error) {
-    console.error('Error saving to Notion:', error);
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
   }
 };
