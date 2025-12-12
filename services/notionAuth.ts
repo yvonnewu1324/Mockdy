@@ -25,15 +25,19 @@ interface NotionTokenResponse {
  */
 export const redirectToNotionAuth = async (): Promise<void> => {
   try {
-    const res = await fetch('/api/notion-oauth/url');
-    
+    // Generate random state for CSRF protection
+    const state = Math.random().toString(36).substring(7);
+    localStorage.setItem('notion_oauth_state', state);
+
+    const res = await fetch(`/api/notion-oauth/url?state=${state}`);
+
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.error || 'Failed to get Notion authorization URL');
     }
-    
+
     const data = (await res.json()) as { url: string };
-    
+
     // Redirect to Notion OAuth page
     window.location.href = data.url;
   } catch (error) {
@@ -85,7 +89,7 @@ export const completeNotionAuth = async (code: string): Promise<NotionConnection
 
     // Store connection in localStorage (per-user, per-browser)
     saveNotionConnection(connection);
-    
+
     return connection;
   } catch (error) {
     console.error('Failed to complete Notion auth', error);
@@ -123,7 +127,7 @@ export const refreshNotionToken = async (refreshToken: string): Promise<NotionCo
 
     // Get existing connection to preserve workspace info
     const existingConnection = getNotionConnection();
-    
+
     // Build updated connection object, preserving workspace info
     const connection: NotionConnection = {
       accessToken: data.access_token,
@@ -138,7 +142,7 @@ export const refreshNotionToken = async (refreshToken: string): Promise<NotionCo
 
     // Save updated connection
     saveNotionConnection(connection);
-    
+
     return connection;
   } catch (error) {
     console.error('Failed to refresh Notion token', error);

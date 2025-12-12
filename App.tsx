@@ -26,7 +26,7 @@ const App: React.FC = () => {
     codeOrNotes: '',
     isLoading: false,
   });
-  
+
   const [feedback, setFeedback] = useState<FeedbackData | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('HOME');
   const [selectedSession, setSelectedSession] = useState<StoredSession | null>(null);
@@ -37,7 +37,7 @@ const App: React.FC = () => {
 
   const chatSessionRef = useRef<Chat | null>(null);
   const [isSending, setIsSending] = useState(false);
-  
+
   // Modal state
   const [modal, setModal] = useState<{
     isOpen: boolean;
@@ -98,7 +98,7 @@ const App: React.FC = () => {
 
     // Handle OAuth cancellation/error from Notion
     if (error) {
-      const errorMessage = error === 'access_denied' 
+      const errorMessage = error === 'access_denied'
         ? 'Notion authorization was cancelled. Please try again if you want to connect your workspace.'
         : `Notion authorization failed: ${error}`;
       showModal(errorMessage, 'warning', 'Notion Authorization');
@@ -111,6 +111,19 @@ const App: React.FC = () => {
 
     // Handle successful OAuth callback
     if (code) {
+      // Verify state parameter for CSRF protection
+      const storedState = localStorage.getItem('notion_oauth_state');
+      localStorage.removeItem('notion_oauth_state'); // Clear state after use
+
+      if (!state || state !== storedState) {
+        showModal('Security check failed: Invalid state parameter. Please try again.', 'error', 'Authorization Failed');
+        // Clear query params
+        url.searchParams.delete('code');
+        url.searchParams.delete('state');
+        window.history.replaceState({}, document.title, url.toString());
+        return;
+      }
+
       setIsCompletingNotionAuth(true);
       completeNotionAuth(code)
         .then((conn) => {
@@ -120,7 +133,7 @@ const App: React.FC = () => {
           url.searchParams.delete('code');
           url.searchParams.delete('state');
           window.history.replaceState({}, document.title, url.toString());
-          
+
           // Show success message
           if (conn.databaseId) {
             showModal(
@@ -194,14 +207,14 @@ const App: React.FC = () => {
 
   const startInterview = async (type: InterviewType) => {
     setInterviewState(prev => ({ ...prev, isLoading: true }));
-    
+
     // Pick a random name
     const interviewerName = INTERVIEWER_NAMES[Math.floor(Math.random() * INTERVIEWER_NAMES.length)];
-    
+
     // For technical interviews, randomly select a NeetCode 150 problem
     let selectedProblem: ProblemInfo | undefined;
     let initialPrompt: string;
-    
+
     const config = SYSTEM_PROMPTS[type];
     // Inject name into system instruction to enforce persona
     const systemInstructionWithPersona = `${config.systemInstruction}\n\nIMPORTANT: Your name is ${interviewerName}. Always maintain this persona and introduce yourself as ${interviewerName}.`;
@@ -225,26 +238,26 @@ const App: React.FC = () => {
     }
 
     try {
-        const result = await chat.sendMessageStream({ message: initialPrompt });
-        
-        let initialResponse = '';
-        for await (const chunk of result) {
-            if (chunk.text) initialResponse += chunk.text;
-        }
+      const result = await chat.sendMessageStream({ message: initialPrompt });
 
-        setInterviewState({
-            isActive: true,
-            type: type,
-            messages: [{ role: 'model', text: initialResponse, timestamp: Date.now() }],
-            codeOrNotes: '',
-            isLoading: false,
-            problemInfo: selectedProblem,
-        });
+      let initialResponse = '';
+      for await (const chunk of result) {
+        if (chunk.text) initialResponse += chunk.text;
+      }
+
+      setInterviewState({
+        isActive: true,
+        type: type,
+        messages: [{ role: 'model', text: initialResponse, timestamp: Date.now() }],
+        codeOrNotes: '',
+        isLoading: false,
+        problemInfo: selectedProblem,
+      });
 
     } catch (e) {
-        console.error("Failed to start", e);
-        setInterviewState(prev => ({ ...prev, isLoading: false }));
-        showModal("Failed to connect to AI. Please check your API key.", 'error', 'Connection Failed');
+      console.error("Failed to start", e);
+      setInterviewState(prev => ({ ...prev, isLoading: false }));
+      showModal("Failed to connect to AI. Please check your API key.", 'error', 'Connection Failed');
     }
   };
 
@@ -252,69 +265,69 @@ const App: React.FC = () => {
     if (!interviewState.type) return;
 
     setInterviewState(prev => ({ ...prev, isLoading: true }));
-    
+
     try {
-        const feedbackData = await generateInterviewFeedback(
-            interviewState.messages,
-            interviewState.codeOrNotes,
-            interviewState.type
-        );
-        
-        // Save to History
-        const newSession: StoredSession = {
-            id: crypto.randomUUID(),
-            timestamp: Date.now(),
-            type: interviewState.type,
-            messages: interviewState.messages,
-            codeOrNotes: interviewState.codeOrNotes,
-            feedback: feedbackData,
-            problemInfo: interviewState.problemInfo,
-        };
-        saveSession(newSession);
-        refreshHistory();
+      const feedbackData = await generateInterviewFeedback(
+        interviewState.messages,
+        interviewState.codeOrNotes,
+        interviewState.type
+      );
 
-        // Save to Notion (if fully configured: connected + database ID)
-        if (isNotionConfigured()) {
-            saveToNotion(newSession, notionConnection).then(result => {
-                if (result.success) {
-                    // Show toast notification (non-intrusive, auto-dismisses)
-                    showToast('Interview report saved successfully to Notion!', 'success');
-                } else {
-                    // Check if error indicates session expired (refresh token expired)
-                    if (result.error?.includes('Session expired') || result.error?.includes('reconnect')) {
-                        // User was logged out due to expired refresh token
-                        setNotionConnection(null);
-                        setNotionDatabaseIdInput('');
-                        showModal(
-                            'Your Notion session has expired. Please reconnect your workspace to continue saving reports.',
-                            'warning',
-                            'Session Expired'
-                        );
-                    } else {
-                        showModal(`Failed to save to Notion: ${result.error || 'Unknown error'}`, 'error', 'Notion Save Failed');
-                    }
-                }
-            });
-        }
+      // Save to History
+      const newSession: StoredSession = {
+        id: crypto.randomUUID(),
+        timestamp: Date.now(),
+        type: interviewState.type,
+        messages: interviewState.messages,
+        codeOrNotes: interviewState.codeOrNotes,
+        feedback: feedbackData,
+        problemInfo: interviewState.problemInfo,
+      };
+      saveSession(newSession);
+      refreshHistory();
 
-        setFeedback(feedbackData);
-        setInterviewState(prev => ({ ...prev, isActive: false }));
+      // Save to Notion (if fully configured: connected + database ID)
+      if (isNotionConfigured()) {
+        saveToNotion(newSession, notionConnection).then(result => {
+          if (result.success) {
+            // Show toast notification (non-intrusive, auto-dismisses)
+            showToast('Interview report saved successfully to Notion!', 'success');
+          } else {
+            // Check if error indicates session expired (refresh token expired)
+            if (result.error?.includes('Session expired') || result.error?.includes('reconnect')) {
+              // User was logged out due to expired refresh token
+              setNotionConnection(null);
+              setNotionDatabaseIdInput('');
+              showModal(
+                'Your Notion session has expired. Please reconnect your workspace to continue saving reports.',
+                'warning',
+                'Session Expired'
+              );
+            } else {
+              showModal(`Failed to save to Notion: ${result.error || 'Unknown error'}`, 'error', 'Notion Save Failed');
+            }
+          }
+        });
+      }
+
+      setFeedback(feedbackData);
+      setInterviewState(prev => ({ ...prev, isActive: false }));
     } catch (e) {
-        console.error(e);
-        showModal("Error generating feedback. Please try again.", 'error', 'Feedback Error');
+      console.error(e);
+      showModal("Error generating feedback. Please try again.", 'error', 'Feedback Error');
     } finally {
-        setInterviewState(prev => ({ ...prev, isLoading: false }));
+      setInterviewState(prev => ({ ...prev, isLoading: false }));
     }
   };
 
   const resetApp = () => {
     setFeedback(null);
     setInterviewState({
-        isActive: false,
-        type: null,
-        messages: [],
-        codeOrNotes: '',
-        isLoading: false
+      isActive: false,
+      type: null,
+      messages: [],
+      codeOrNotes: '',
+      isLoading: false
     });
     chatSessionRef.current = null;
     setViewMode('HOME');
@@ -322,13 +335,13 @@ const App: React.FC = () => {
   };
 
   const handleDeleteSession = (id: string) => {
-      deleteSession(id);
-      refreshHistory();
+    deleteSession(id);
+    refreshHistory();
   };
 
   const handleSelectSession = (session: StoredSession) => {
-      setSelectedSession(session);
-      setViewMode('REVIEW');
+    setSelectedSession(session);
+    setViewMode('REVIEW');
   };
 
   // 1. Loading State
@@ -337,7 +350,7 @@ const App: React.FC = () => {
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white space-y-4">
         <Loader2 size={48} className="animate-spin text-primary" />
         <p className="text-slate-400 font-medium animate-pulse">
-            {feedback ? "Analyzing your performance..." : "Preparing interview environment..."}
+          {feedback ? "Analyzing your performance..." : "Preparing interview environment..."}
         </p>
       </div>
     );
@@ -351,7 +364,7 @@ const App: React.FC = () => {
   // 3. Active Interview View
   if (interviewState.isActive && interviewState.type) {
     return (
-      <InterviewSession 
+      <InterviewSession
         type={interviewState.type}
         messages={interviewState.messages}
         setMessages={(fn) => setInterviewState(prev => ({ ...prev, messages: typeof fn === 'function' ? fn(prev.messages) : fn }))}
@@ -367,191 +380,190 @@ const App: React.FC = () => {
 
   // 4. History View
   if (viewMode === 'HISTORY') {
-      return (
-          <HistoryView 
-            sessions={history} 
-            onSelectSession={handleSelectSession} 
-            onDeleteSession={handleDeleteSession}
-            onHome={() => setViewMode('HOME')} 
-          />
-      );
+    return (
+      <HistoryView
+        sessions={history}
+        onSelectSession={handleSelectSession}
+        onDeleteSession={handleDeleteSession}
+        onHome={() => setViewMode('HOME')}
+      />
+    );
   }
 
   // 5. Review View
   if (viewMode === 'REVIEW' && selectedSession) {
-      return (
-          <ReviewSession 
-            session={selectedSession} 
-            onBack={() => setViewMode('HISTORY')} 
-          />
-      );
+    return (
+      <ReviewSession
+        session={selectedSession}
+        onBack={() => setViewMode('HISTORY')}
+      />
+    );
   }
 
   // 6. Landing / Selection View
   return (
     <div className="min-h-screen bg-slate-900 text-white selection:bg-primary/30">
-        <div className="max-w-6xl mx-auto px-6 py-20 relative">
-            
-            {/* History Button */}
-            <div className="absolute top-6 right-6">
-                <button 
-                    onClick={() => setViewMode('HISTORY')}
-                    className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-lg transition-colors text-sm font-medium border border-slate-700"
-                >
-                    <History size={16} />
-                    History
-                </button>
-            </div>
+      <div className="max-w-6xl mx-auto px-6 py-20 relative">
 
-            <div className="text-center mb-16 space-y-4">
-                <div className="inline-flex items-center gap-2 bg-slate-800/50 border border-slate-700 rounded-full px-4 py-1 text-sm text-slate-300 mb-4">
-                    <Sparkles size={14} className="text-yellow-400" />
-                    <span>AI-Powered Interview Prep</span>
-                </div>
-                <h1 className="text-5xl md:text-6xl font-black tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
-                    Mockdy
-                </h1>
-                <p className="text-xl text-slate-400 max-w-2xl mx-auto">
-                    Master your software engineering interviews. 
-                    Real-time AI feedback for Coding, Behavior, and System Design.
-                </p>
-            </div>
-
-            {/* Notion connection panel */}
-            <div className={`max-w-2xl mx-auto mb-10 bg-slate-900/60 border rounded-2xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4 ${
-              notionConnection && !notionConnection.databaseId 
-                ? 'border-yellow-500/50 bg-yellow-500/5' 
-                : notionConnection && notionConnection.databaseId
-                ? 'border-green-500/50 bg-green-500/5'
-                : 'border-slate-800'
-            }`}>
-              <div className="text-left space-y-1">
-                <p className="text-sm font-semibold text-slate-200">
-                  Notion workspace connection
-                </p>
-                <p className="text-xs text-slate-400">
-                  Connect your Notion workspace. If you use the template option, the database will be configured automatically.
-                </p>
-                {notionConnection && (
-                  <>
-                    <p className="text-xs text-slate-400">
-                      ✅ Connected workspace{notionConnection.workspaceName ? `: ${notionConnection.workspaceName}` : ''}.
-                    </p>
-                    {notionConnection.databaseId ? (
-                      <p className="text-xs text-green-400 font-medium">
-                        ✨ Database configured: Reports will be saved automatically to your template database.
-                      </p>
-                    ) : (
-                      <p className="text-xs text-yellow-400 font-medium">
-                        ⚠️ Database ID required: Paste your Notion database ID below to enable saving reports.
-                      </p>
-                    )}
-                  </>
-                )}
-              </div>
-              <div className="flex flex-col gap-2 md:items-end w-full md:w-auto">
-                <div className="flex gap-2 w-full">
-                  <input
-                    type="text"
-                    value={notionDatabaseIdInput}
-                    onChange={(e) => setNotionDatabaseIdInput(e.target.value)}
-                    placeholder="Notion database ID"
-                    className="flex-1 bg-slate-950/70 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                  <button
-                    onClick={handleSaveNotionDatabaseId}
-                    className="px-3 py-1.5 text-xs font-medium bg-primary text-slate-950 rounded-lg hover:bg-primary/90 transition-colors"
-                  >
-                    Save DB
-                  </button>
-                </div>
-                <div className="flex gap-2">
-                  {!notionConnection && (
-                    <button
-                      onClick={handleConnectNotionClick}
-                      disabled={isCompletingNotionAuth}
-                      className="px-3 py-1.5 text-xs font-medium bg-slate-800 text-slate-100 rounded-lg border border-slate-700 hover:bg-slate-700 transition-colors disabled:opacity-60"
-                    >
-                      Connect Notion
-                    </button>
-                  )}
-                  {notionConnection && (
-                    <button
-                      onClick={handleDisconnectNotion}
-                      className="px-3 py-1.5 text-xs font-medium bg-transparent text-slate-400 rounded-lg border border-slate-800 hover:border-red-500 hover:text-red-300 transition-colors"
-                    >
-                      Disconnect
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="grid md:grid-cols-3 gap-6">
-                <Card 
-                    title="Technical Interview"
-                    desc="NeetCode 150 style questions. Data structures, algorithms, and Big O analysis."
-                    icon={<Code size={32} />}
-                    color="text-accent"
-                    onClick={() => startInterview('TECHNICAL')}
-                />
-                <Card 
-                    title="Behavioral Interview"
-                    desc="Master the STAR method. Prepare for 'Tell me about a time...' questions."
-                    icon={<Users size={32} />}
-                    color="text-primary"
-                    onClick={() => startInterview('BEHAVIORAL')}
-                />
-                <Card 
-                    title="System Design"
-                    desc="Architect scalable systems like URL Shorteners or Chat Apps from scratch."
-                    icon={<Layout size={32} />}
-                    color="text-purple-400"
-                    onClick={() => startInterview('SYSTEM_DESIGN')}
-                />
-            </div>
-
-            <footer className="mt-20 text-center text-slate-600 text-sm">
-                <p>Powered by Google Gemini 2.5 Flash</p>
-            </footer>
+        {/* History Button */}
+        <div className="absolute top-6 right-6">
+          <button
+            onClick={() => setViewMode('HISTORY')}
+            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-lg transition-colors text-sm font-medium border border-slate-700"
+          >
+            <History size={16} />
+            History
+          </button>
         </div>
 
-        {/* Custom Modal */}
-        <Modal
-          isOpen={modal.isOpen}
-          onClose={closeModal}
-          type={modal.type}
-          title={modal.title}
-          message={modal.message}
-        />
+        <div className="text-center mb-16 space-y-4">
+          <div className="inline-flex items-center gap-2 bg-slate-800/50 border border-slate-700 rounded-full px-4 py-1 text-sm text-slate-300 mb-4">
+            <Sparkles size={14} className="text-yellow-400" />
+            <span>AI-Powered Interview Prep</span>
+          </div>
+          <h1 className="text-5xl md:text-6xl font-black tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
+            Mockdy
+          </h1>
+          <p className="text-xl text-slate-400 max-w-2xl mx-auto">
+            Master your software engineering interviews.
+            Real-time AI feedback for Coding, Behavior, and System Design.
+          </p>
+        </div>
 
-        {/* Toast Notification (for non-intrusive alerts like Notion save success) */}
-        <Toast
-          open={toast.open}
-          onClose={closeToast}
-          type={toast.type}
-          message={toast.message}
-          autoHideDuration={4000}
-        />
+        {/* Notion connection panel */}
+        <div className={`max-w-2xl mx-auto mb-10 bg-slate-900/60 border rounded-2xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4 ${notionConnection && !notionConnection.databaseId
+            ? 'border-yellow-500/50 bg-yellow-500/5'
+            : notionConnection && notionConnection.databaseId
+              ? 'border-green-500/50 bg-green-500/5'
+              : 'border-slate-800'
+          }`}>
+          <div className="text-left space-y-1">
+            <p className="text-sm font-semibold text-slate-200">
+              Notion workspace connection
+            </p>
+            <p className="text-xs text-slate-400">
+              Connect your Notion workspace. If you use the template option, the database will be configured automatically.
+            </p>
+            {notionConnection && (
+              <>
+                <p className="text-xs text-slate-400">
+                  ✅ Connected workspace{notionConnection.workspaceName ? `: ${notionConnection.workspaceName}` : ''}.
+                </p>
+                {notionConnection.databaseId ? (
+                  <p className="text-xs text-green-400 font-medium">
+                    ✨ Database configured: Reports will be saved automatically to your template database.
+                  </p>
+                ) : (
+                  <p className="text-xs text-yellow-400 font-medium">
+                    ⚠️ Database ID required: Paste your Notion database ID below to enable saving reports.
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+          <div className="flex flex-col gap-2 md:items-end w-full md:w-auto">
+            <div className="flex gap-2 w-full">
+              <input
+                type="text"
+                value={notionDatabaseIdInput}
+                onChange={(e) => setNotionDatabaseIdInput(e.target.value)}
+                placeholder="Notion database ID"
+                className="flex-1 bg-slate-950/70 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <button
+                onClick={handleSaveNotionDatabaseId}
+                className="px-3 py-1.5 text-xs font-medium bg-primary text-slate-950 rounded-lg hover:bg-primary/90 transition-colors"
+              >
+                Save DB
+              </button>
+            </div>
+            <div className="flex gap-2">
+              {!notionConnection && (
+                <button
+                  onClick={handleConnectNotionClick}
+                  disabled={isCompletingNotionAuth}
+                  className="px-3 py-1.5 text-xs font-medium bg-slate-800 text-slate-100 rounded-lg border border-slate-700 hover:bg-slate-700 transition-colors disabled:opacity-60"
+                >
+                  Connect Notion
+                </button>
+              )}
+              {notionConnection && (
+                <button
+                  onClick={handleDisconnectNotion}
+                  className="px-3 py-1.5 text-xs font-medium bg-transparent text-slate-400 rounded-lg border border-slate-800 hover:border-red-500 hover:text-red-300 transition-colors"
+                >
+                  Disconnect
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid md:grid-cols-3 gap-6">
+          <Card
+            title="Technical Interview"
+            desc="NeetCode 150 style questions. Data structures, algorithms, and Big O analysis."
+            icon={<Code size={32} />}
+            color="text-accent"
+            onClick={() => startInterview('TECHNICAL')}
+          />
+          <Card
+            title="Behavioral Interview"
+            desc="Master the STAR method. Prepare for 'Tell me about a time...' questions."
+            icon={<Users size={32} />}
+            color="text-primary"
+            onClick={() => startInterview('BEHAVIORAL')}
+          />
+          <Card
+            title="System Design"
+            desc="Architect scalable systems like URL Shorteners or Chat Apps from scratch."
+            icon={<Layout size={32} />}
+            color="text-purple-400"
+            onClick={() => startInterview('SYSTEM_DESIGN')}
+          />
+        </div>
+
+        <footer className="mt-20 text-center text-slate-600 text-sm">
+          <p>Powered by Google Gemini 2.5 Flash</p>
+        </footer>
+      </div>
+
+      {/* Custom Modal */}
+      <Modal
+        isOpen={modal.isOpen}
+        onClose={closeModal}
+        type={modal.type}
+        title={modal.title}
+        message={modal.message}
+      />
+
+      {/* Toast Notification (for non-intrusive alerts like Notion save success) */}
+      <Toast
+        open={toast.open}
+        onClose={closeToast}
+        type={toast.type}
+        message={toast.message}
+        autoHideDuration={4000}
+      />
     </div>
   );
 };
 
 // Sub-component for selection cards
 const Card: React.FC<{ title: string, desc: string, icon: React.ReactNode, color: string, onClick: () => void }> = ({ title, desc, icon, color, onClick }) => (
-    <button 
-        onClick={onClick}
-        className="group relative flex flex-col items-start p-8 bg-slate-800 rounded-2xl border border-slate-700 hover:border-slate-500 hover:bg-slate-800/80 transition-all duration-300 text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
-    >
-        <div className={`mb-6 p-4 rounded-xl bg-slate-900/50 ${color} shadow-inner`}>
-            {icon}
-        </div>
-        <h3 className="text-2xl font-bold mb-3 text-slate-100 group-hover:text-white transition-colors">{title}</h3>
-        <p className="text-slate-400 leading-relaxed mb-6">{desc}</p>
-        <div className="mt-auto flex items-center text-sm font-semibold text-white/50 group-hover:text-white transition-colors">
-            Start Session <span className="ml-2 transition-transform group-hover:translate-x-1">→</span>
-        </div>
-    </button>
+  <button
+    onClick={onClick}
+    className="group relative flex flex-col items-start p-8 bg-slate-800 rounded-2xl border border-slate-700 hover:border-slate-500 hover:bg-slate-800/80 transition-all duration-300 text-left shadow-lg hover:shadow-2xl hover:-translate-y-1"
+  >
+    <div className={`mb-6 p-4 rounded-xl bg-slate-900/50 ${color} shadow-inner`}>
+      {icon}
+    </div>
+    <h3 className="text-2xl font-bold mb-3 text-slate-100 group-hover:text-white transition-colors">{title}</h3>
+    <p className="text-slate-400 leading-relaxed mb-6">{desc}</p>
+    <div className="mt-auto flex items-center text-sm font-semibold text-white/50 group-hover:text-white transition-colors">
+      Start Session <span className="ml-2 transition-transform group-hover:translate-x-1">→</span>
+    </div>
+  </button>
 );
 
 export default App;

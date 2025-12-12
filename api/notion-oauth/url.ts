@@ -43,6 +43,12 @@ export default async function handler(
     // Workspace-level token (recommended for most integrations)
     baseUrl.searchParams.set('owner', 'user');
 
+    // Add state parameter if provided (for CSRF protection)
+    const { state } = req.query || {};
+    if (state && typeof state === 'string') {
+      baseUrl.searchParams.set('state', state);
+    }
+
     return res.status(200).json({ url: baseUrl.toString() });
   } catch (err) {
     console.error('[Notion OAuth] Failed to build authorization URL', err);
